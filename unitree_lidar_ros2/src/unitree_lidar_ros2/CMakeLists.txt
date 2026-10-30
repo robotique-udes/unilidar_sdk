@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.27)
 project(unitree_lidar_ros2)
 
 # Jazzy (rclcpp) requires C++17
@@ -10,6 +10,8 @@ endif()
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
+
+set(CMAKE_POLICY_DEFAULT_CMP0144 NEW)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
