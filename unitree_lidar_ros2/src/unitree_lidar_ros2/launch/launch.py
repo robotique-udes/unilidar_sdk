@@ -22,7 +22,7 @@ def generate_launch_description():
     declare_port = DeclareLaunchArgument(
         'port',
         default_value='/dev/ttyUSB0',
-        description='Serial port of the lidar',
+        description='Serial port of the lidar, internal to unitree_lidar_ros2 do not use directly in ros2 launch',
     )
 
     lidar_node = Node(
