@@ -49,7 +49,7 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         name='rviz2',
-        arguments=['-d', os.path.join(pkg_share, 'view.rviz')],
+        arguments=['-d', os.path.join(pkg_share, 'rviz/view.rviz')],
         output='log',
         condition=IfCondition(use_rviz),
     )

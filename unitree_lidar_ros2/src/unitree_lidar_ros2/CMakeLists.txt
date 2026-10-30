@@ -55,9 +55,9 @@ install(TARGETS unitree_lidar_ros2_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+
 # install rviz file and launch file
-install(FILES rviz/view.rviz launch/launch.py
-  DESTINATION share/${PROJECT_NAME}
-)
+install(DIRECTORY rviz DESTINATION share/${PROJECT_NAME})
 
 ament_package()
