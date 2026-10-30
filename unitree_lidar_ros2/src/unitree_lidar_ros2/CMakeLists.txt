@@ -1,14 +1,10 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.8)
 project(unitree_lidar_ros2)
 
-# Default to C99
-if(NOT CMAKE_C_STANDARD)
-  set(CMAKE_C_STANDARD 99)
-endif()
-
-# Default to C++14
+# Jazzy (rclcpp) requires C++17
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -20,38 +16,40 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
-find_package(PCL REQUIRED)
+find_package(PCL REQUIRED COMPONENTS
+  common io kdtree search filters registration range_image)
+find_package(Threads REQUIRED)
 
-include_directories(
-  ${PCL_INCLUDE_DIRS} 
-  include
-  ../../../unitree_lidar_sdk/include
-)
-
-link_directories(
-  ${PCL_LIBRARY_DIRS}
-  ../../../unitree_lidar_sdk/lib/${CMAKE_SYSTEM_PROCESSOR}
-)
 
 add_definitions(${PCL_DEFINITIONS})
 
-add_executable(unitree_lidar_ros2_node src/unitree_lidar_ros2_node.cpp)
-
-target_link_libraries( unitree_lidar_ros2_node
-  ${Boost_SYSTEM_LIBRARY}
-  ${PCL_LIBRARIES}
-  libunitree_lidar_sdk.a
+link_directories(
+  ${PCL_LIBRARY_DIRS}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../../unitree_lidar_sdk/lib/${CMAKE_SYSTEM_PROCESSOR}
 )
 
-ament_target_dependencies(
-  unitree_lidar_ros2_node
-  rclcpp std_msgs 
+add_executable(unitree_lidar_ros2_node src/unitree_lidar_ros2_node.cpp)
+
+target_include_directories(unitree_lidar_ros2_node PRIVATE
+  ${PCL_INCLUDE_DIRS}
+  include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../../unitree_lidar_sdk/include
+)
+
+ament_target_dependencies(unitree_lidar_ros2_node
+  rclcpp
+  std_msgs
   sensor_msgs
   pcl_conversions
 )
 
-install(TARGETS
-unitree_lidar_ros2_node
+target_link_libraries(unitree_lidar_ros2_node
+  ${PCL_LIBRARIES}
+  libunitree_lidar_sdk.a
+  Threads::Threads
+)
+
+install(TARGETS unitree_lidar_ros2_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

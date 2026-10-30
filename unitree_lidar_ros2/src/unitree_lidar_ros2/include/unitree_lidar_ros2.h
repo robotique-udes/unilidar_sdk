@@ -6,20 +6,17 @@
 
 #define BOOST_BIND_NO_PLACEHOLDERS
 
-#include <memory>
-#include "iostream"
-#include <string>
-#include <stdio.h>
-#include <iterator>
-#include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <memory>
+#include <string>
 
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-#include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/msg/imu.hpp"
+#include "sensor_msgs/msg/point_cloud2.hpp"
 #include "std_msgs/msg/header.hpp"
 
 #include "rclcpp/rclcpp.hpp"
@@ -27,30 +24,26 @@
 
 #include "unitree_lidar_sdk_pcl.h"
 
-using std::placeholders::_1;
-
-class UnitreeLidarSDKNode : public rclcpp::Node
-{
+class UnitreeLidarSDKNode : public rclcpp::Node {
 public:
-
-  explicit UnitreeLidarSDKNode(const rclcpp::NodeOptions &options = rclcpp::NodeOptions());
-
-  ~UnitreeLidarSDKNode(){};
+  explicit UnitreeLidarSDKNode(
+      const rclcpp::NodeOptions &options = rclcpp::NodeOptions());
+  ~UnitreeLidarSDKNode() override;
 
   void timer_callback();
 
 protected:
-
   // ROS
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_cloud_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   // Unitree Lidar Reader
-  UnitreeLidarReader* lsdk_;
+  UnitreeLidarReader *lsdk_{nullptr};
+  pcl::PointCloud<PointType>::Ptr cloud_out_{new pcl::PointCloud<PointType>()};
 
   // Config params
-  std::string port_; 
+  std::string port_;
 
   double rotate_yaw_bias_;
   double range_scale_;
@@ -68,25 +61,33 @@ protected:
 
 ///////////////////////////////////////////////////////////////////
 
-UnitreeLidarSDKNode::UnitreeLidarSDKNode(const rclcpp::NodeOptions& options) 
-  : Node("unitre_lidar_sdk_node", options) 
-{      
-  // load config parameters
+namespace {
+// Split a floating-point stamp (seconds) into a ROS time without int32
+// overflow/rounding issues.
+inline rclcpp::Time toRosTime(double stamp) {
+  const auto ns = static_cast<int64_t>(stamp * 1e9);
+  return rclcpp::Time(ns, RCL_ROS_TIME);
+}
+} // namespace
+
+inline UnitreeLidarSDKNode::UnitreeLidarSDKNode(
+    const rclcpp::NodeOptions &options)
+    : Node("unilidar_sdk_node", options) {
+  // load config parameters (use 0.0 so the declared type is clearly double)
   declare_parameter<std::string>("port", "/dev/ttyUSB0");
-  
-  declare_parameter<double>("rotate_yaw_bias", 0);
+
+  declare_parameter<double>("rotate_yaw_bias", 0.0);
   declare_parameter<double>("range_scale", 0.001);
-  declare_parameter<double>("range_bias", 0);
-  declare_parameter<double>("range_max", 50);
-  declare_parameter<double>("range_min", 0);
+  declare_parameter<double>("range_bias", 0.0);
+  declare_parameter<double>("range_max", 50.0);
+  declare_parameter<double>("range_min", 0.0);
 
   declare_parameter<std::string>("cloud_frame", "unilidar_lidar");
   declare_parameter<std::string>("cloud_topic", "unilidar/cloud");
   declare_parameter<int>("cloud_scan_num", 18);
-  
+
   declare_parameter<std::string>("imu_frame", "unilidar_imu");
   declare_parameter<std::string>("imu_topic", "unilidar/imu");
-  
 
   port_ = get_parameter("port").as_string();
 
@@ -95,48 +96,42 @@ UnitreeLidarSDKNode::UnitreeLidarSDKNode(const rclcpp::NodeOptions& options)
   range_bias_ = get_parameter("range_bias").as_double();
   range_max_ = get_parameter("range_max").as_double();
   range_min_ = get_parameter("range_min").as_double();
-  
+
   cloud_frame_ = get_parameter("cloud_frame").as_string();
   cloud_topic_ = get_parameter("cloud_topic").as_string();
   cloud_scan_num_ = get_parameter("cloud_scan_num").as_int();
-  
+
   imu_frame_ = get_parameter("imu_frame").as_string();
   imu_topic_ = get_parameter("imu_topic").as_string();
 
-  // std::cout << "port_ = " << port_ 
-  //           << ", cloud_topic_ = " << cloud_topic_
-  //           << ", cloud_scan_num_ = " << cloud_scan_num_
-  //           << std::endl;
-
   // Initialize UnitreeLidarReader
   lsdk_ = createUnitreeLidarReader();
-  lsdk_->initialize(cloud_scan_num_, port_, 2000000, rotate_yaw_bias_, 
-        range_scale_, range_bias_, range_max_, range_min_);
+  lsdk_->initialize(cloud_scan_num_, port_, 2000000, rotate_yaw_bias_,
+                    range_scale_, range_bias_, range_max_, range_min_);
 
-  // ROS2
-  pub_cloud_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(cloud_topic_, 10);
-  pub_imu_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 10);
-  timer_ = this->create_wall_timer(std::chrono::milliseconds(1), std::bind(&UnitreeLidarSDKNode::timer_callback, this));
+  // ROS 2
+  pub_cloud_ =
+      create_publisher<sensor_msgs::msg::PointCloud2>(cloud_topic_, 10);
+  pub_imu_ = create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 10);
+  timer_ = create_wall_timer(std::chrono::milliseconds(1),
+                             [this]() { timer_callback(); });
 }
 
-void UnitreeLidarSDKNode::timer_callback()
-{
-  MessageType result = lsdk_->runParse();
-  static pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
+inline UnitreeLidarSDKNode::~UnitreeLidarSDKNode() {
+  // The SDK provides createUnitreeLidarReader() but no destroy function,
+  // and UnitreeLidarReader has a non-virtual destructor, so deleting it is
+  // undefined behavior. The reader lives until process exit.
+}
 
-  // RCLCPP_INFO(this->get_logger(), "result = %d", result);
+inline void UnitreeLidarSDKNode::timer_callback() {
+  const MessageType result = lsdk_->runParse();
 
-  if (result == IMU)
-  {
+  if (result == IMU) {
     auto &imu = lsdk_->getIMU();
-
-    rclcpp::Time timestamp(
-        static_cast<int32_t>(imu.stamp),
-        static_cast<uint32_t>((imu.stamp - static_cast<int32_t>(imu.stamp) ) * 1e9));
 
     sensor_msgs::msg::Imu imuMsg;
     imuMsg.header.frame_id = imu_frame_;
-    imuMsg.header.stamp = timestamp;
+    imuMsg.header.stamp = toRosTime(imu.stamp);
 
     imuMsg.orientation.x = imu.quaternion[0];
     imuMsg.orientation.y = imu.quaternion[1];
@@ -152,21 +147,14 @@ void UnitreeLidarSDKNode::timer_callback()
     imuMsg.linear_acceleration.z = imu.linear_acceleration[2];
 
     pub_imu_->publish(imuMsg);
-  }
-  else if (result == POINTCLOUD)
-  {
-    // RCLCPP_INFO(this->get_logger(), "POINTCLOUD");
+  } else if (result == POINTCLOUD) {
     auto &cloud = lsdk_->getCloud();
-    transformUnitreeCloudToPCL(cloud, cloudOut);
-
-    rclcpp::Time timestamp(
-        static_cast<int32_t>(cloud.stamp),
-        static_cast<uint32_t>((cloud.stamp - static_cast<int32_t>(cloud.stamp) ) * 1e9));
+    transformUnitreeCloudToPCL(cloud, cloud_out_);
 
     sensor_msgs::msg::PointCloud2 cloud_msg;
-    pcl::toROSMsg(*cloudOut, cloud_msg);
+    pcl::toROSMsg(*cloud_out_, cloud_msg);
     cloud_msg.header.frame_id = cloud_frame_;
-    cloud_msg.header.stamp = timestamp;
+    cloud_msg.header.stamp = toRosTime(cloud.stamp);
 
     pub_cloud_->publish(cloud_msg);
   }
