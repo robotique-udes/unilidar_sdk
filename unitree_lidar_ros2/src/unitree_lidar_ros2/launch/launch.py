@@ -37,11 +37,11 @@ def generate_launch_description():
             'range_bias': 0.0,
             'range_max': 50.0,
             'range_min': 0.0,
-            'cloud_frame': 'unilidar_lidar',
-            'cloud_topic': 'unilidar/cloud',
+            'cloud_frame': 'lidar_link',
+            'cloud_topic': 'lidar/points',
             'cloud_scan_num': 18,
-            'imu_frame': 'unilidar_imu',
-            'imu_topic': 'unilidar/imu',
+            'imu_frame': 'lidar_imu_link',
+            'imu_topic': 'lidar/imu',
         }],
     )
 
